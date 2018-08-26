@@ -5,14 +5,14 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>56a6e36a-53c9-426f-8f16-b3f3b1b39cd1</ProjectGuid>
+    <ProjectGuid>{da2d2bde-9a8f-4064-a459-ac765784c8a2}</ProjectGuid>
     <OutputType>WinExe</OutputType>
     <RootNamespace>FunctionalPharo</RootNamespace>
     <AssemblyName>FunctionalPharo</AssemblyName>
     <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <TargetFSharpCoreVersion>4.4.1.0</TargetFSharpCoreVersion>
-    <Name>FunctionalPharo</Name>
+    <Name>PharonicScheduler</Name>
     <NuGetPackageImportStamp>
     </NuGetPackageImportStamp>
   </PropertyGroup>

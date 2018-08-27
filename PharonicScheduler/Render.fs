@@ -26,7 +26,7 @@ type Geometry =
     | Triangle of Point * Point * Point
 
 type TextSettings = {
-    fontSize: int;
+    fontSize: float32;
     fontFamily: string;
     color: SKColor;
 }    
@@ -34,7 +34,7 @@ type TextSettings = {
 type Node = 
     | Panel of Point * Size * Node array
     | Shape of Point * Size * PaintSettings * Geometry
-    | Text of Point * Size * TextSettings * string
+    | Text of Point * Size * float32 * TextSettings * string
 
 let toSkPoint((x,y): Point) = 
     new SKPoint(x,y)
@@ -62,17 +62,21 @@ let rec paint (canvas: SKCanvas, widget: Node) =
     match widget with
     | Panel((x,y), (width,height), children) ->
         canvas.Translate(x,y)
-        //canvas.ClipRect(SKRect.Create(width,height))
+        canvas.ClipRect(SKRect.Create(width,height))
         for child in children do
             paint(canvas, child)
-    | Text((x,y), (width, height), textSettings, text) ->
+    | Text((x,y), (width, height), lineHeight, textSettings, text) ->
         canvas.Translate(x,y)
-        //canvas.ClipRect(SKRect.Create(width,height))
+        canvas.ClipRect(SKRect.Create(width,height))
         let skPaint = new SKPaint()
         skPaint.Color <- textSettings.color
         skPaint.IsAntialias <- true
-        skPaint.TextSize <- float32(textSettings.fontSize)
-        canvas.DrawText(text, new SKPoint(0.f,0.f), skPaint)
+        skPaint.TextSize <- textSettings.fontSize
+        skPaint.Typeface <- SKFontManager.Default.MatchCharacter(textSettings.fontFamily, SKFontStyleWeight.Normal, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright, null, ' ');
+        skPaint.Color <- SKColors.DodgerBlue
+        canvas.DrawRect(x,y,width,height,skPaint)
+        skPaint.Color <- textSettings.color
+        canvas.DrawText(text, new SKPoint(0.f, lineHeight), skPaint)
     | Shape((x,y), (width, height), paintSettings, geometry) ->
         canvas.Translate(x,y)
         fillShape(canvas, paintSettings, geometry)

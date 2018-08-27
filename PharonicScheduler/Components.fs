@@ -44,7 +44,7 @@ type WidgetData = {
 }
 
 type FontSettings = {
-    fontSize: int;
+    fontSize: float32;
     fontFamily: string;
     color: SKColor;
 }
@@ -59,6 +59,11 @@ type InputFieldData = {
     onChange: string -> unit
 }
 
+type Tree<'a> = {
+    data: 'a;
+    children: Tree<'a> array;
+}
+
 type Widget = 
     | Panel of WidgetData * Widget array
     | Text of WidgetData * TextData
@@ -68,26 +73,11 @@ type ComputedSize =
     | Size of float32 * float32
     | CouldNotComputeSize
 
-    member this.Width = 
-        match this with 
-        | Size(width,height) -> width
-        | CouldNotComputeSize -> raise(new Exception("Cannot get width of 'CouldNotComputeSize'"))
-
-    member this.Height =
-        match this with
-        | Size(width,height) -> height
-        | CouldNotComputeSize -> raise(new Exception("Cannot get height of 'CouldNotComputeSize'"))
-
-type SizedWidget = 
-    | SizedPanel of ComputedSize * WidgetData * SizedWidget array
-    | SizedText of ComputedSize * WidgetData * TextData
-    | SizedInputField of ComputedSize * WidgetData * InputFieldData
-
-    member this.Size = 
-        match this with 
-        | SizedPanel(size, data, children) -> size
-        | SizedText(size, data, textData) -> size
-        | SizedInputField(size, data, inputFieldData) -> size
+type SizedWidget = {
+    size:ComputedSize;
+    lineHeight:Option<float32>;
+    widget:Widget;
+}
 
 let resolveSize(width: SizeValue, height: SizeValue, parentSize: ComputedSize): ComputedSize = 
     let finalWidth = 
@@ -108,65 +98,91 @@ let resolveSize(width: SizeValue, height: SizeValue, parentSize: ComputedSize): 
             | CouldNotComputeSize -> raise(new Exception("Percentage without parent size"))
     Size(finalWidth, finalHeight)
 
-let rec toSizeTree(widget: Widget, parentSize: ComputedSize): SizedWidget =
+
+let maxWidth(children: Tree<SizedWidget> seq) = Array.max [| for {data={size=Size(w,_)}} in children do yield w |]
+let maxHeight(children: Tree<SizedWidget> seq) = Array.max [| for {data={size=Size(_,h)}} in children do yield h |]
+
+let rec toSizeTree(widget: Widget, parentSize: ComputedSize): Tree<SizedWidget> =
     match widget with 
     | Panel(data, children) -> 
         match data.size with 
         | FixedSize(width, height) -> 
             let computedSize = resolveSize(width, height, parentSize)
             let sizedChildren = children |> Array.map(fun child -> toSizeTree(child, computedSize))
-            SizedPanel(computedSize, data, sizedChildren)
+            { data = {size=computedSize; lineHeight=None; widget=widget}; children = sizedChildren }
         | SizeToContent -> 
             let sizedChildren = children |> Array.map(fun child -> toSizeTree(child, parentSize))           
-            let maxWidth = sizedChildren |> Array.map(fun child -> child.Size.Width) |> Array.max
-            let maxHeight = sizedChildren |> Array.map(fun child -> child.Size.Height) |> Array.max
-            SizedPanel(Size(maxWidth, maxHeight), data, sizedChildren)
+            let computedSize = Size(maxWidth(sizedChildren), maxHeight(sizedChildren))
+            { data = {size=computedSize; lineHeight=None; widget=widget}; children = sizedChildren }
     | Text(data, textData) ->
         match data.size with 
         | FixedSize(width, height) ->
             let computedSize = resolveSize(width, height, parentSize)
-            SizedText(computedSize, data, textData)
+            { data = {size=computedSize; lineHeight=None; widget=widget}; children = [||] }
         | SizeToContent -> 
             let paint = new SKPaint()
             paint.IsAntialias <- true
             paint.TextEncoding <- SKTextEncoding.Utf8
-            paint.TextSize <- 45.f
-            paint.Typeface <- SKFontManager.Default.MatchCharacter("Times New Roman", SKFontStyleWeight.Normal, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright, null, ' ');
+            paint.TextSize <- textData.fontSettings.fontSize
+            paint.Typeface <- SKFontManager.Default.MatchCharacter(
+                textData.fontSettings.fontFamily, 
+                SKFontStyleWeight.Normal, 
+                SKFontStyleWidth.Normal, 
+                SKFontStyleSlant.Upright, 
+                null, 
+                ' '
+            )
             paint.Color <- SKColors.Black
             let metrics = ref(new SKFontMetrics())
             let bounds = ref(new SKRect())
             paint.MeasureText(textData.text, bounds) |> ignore
-            SizedText(Size(bounds.Value.Width, bounds.Value.Height), data, textData)
+            paint.GetFontMetrics(metrics) |> ignore
+            let maxHeight =  metrics.Value.Bottom -  metrics.Value.Top
+            let height = bounds.Value.Height
+            let computedSize = Size(bounds.Value.Width, maxHeight)
+            { data = {size=computedSize; lineHeight=Some(height); widget=widget}; children = [||] }
     | InputField(data, inputData) -> 
         match data.size with 
         | FixedSize(width, height) -> raise(new Exception("Fixed Size Not Supported Yet"))
         | SizeToContent -> raise(new Exception("SizeToContent Not Supported Yet"))
 
-let rec sizedToRenderNode sizedWidget = 
-    match sizedWidget with 
-    | SizedPanel(size, data, children) -> 
-        match size with 
-        | Size(width,height) -> 
-            Render.Panel((0.f,0.f), (width,height), children |> Array.map(sizedToRenderNode))
-        | CouldNotComputeSize -> raise(new Exception("Could not compute size"))
-    | SizedText(size, data, textData) ->
-        match size with 
-        | Size(width,height) -> 
+let alignmentToPosition((valign, halign),(elementWidth, elementHeight),(parentWidth, parentHeight)) = 
+    let x = 
+        match halign with 
+        | Left -> 0.f
+        | Right -> float32(parentWidth - elementWidth)
+        | HCenter -> (parentWidth / 2.f) - (elementWidth / 2.f)
+    let y = 
+        match valign with 
+        | Top -> 0.f
+        | Bottom -> float32(parentHeight - elementHeight)
+        | VCenter -> (parentHeight / 2.f) - (elementHeight / 2.f)
+    (x,y)
+
+let rec sizedToRenderNode(tree: Tree<SizedWidget>, parentSize: float32 * float32) = 
+    let {size=size;lineHeight=lineHeight;widget=widget} = tree.data
+    match size with 
+    | Size(width, height) ->
+        match widget with 
+        | Panel(data, children) ->
+            let pos = alignmentToPosition(data.anchor, (width, height), parentSize)
+            Render.Panel(pos, (width,height), tree.children |> Array.map(fun c -> sizedToRenderNode(c, (width,height))))
+        | Text(data, textData) ->
             let settings: TextSettings = {
                 fontSize=textData.fontSettings.fontSize;
                 fontFamily=textData.fontSettings.fontFamily;
                 color=textData.fontSettings.color;
             }
-            Render.Text((0.f,0.f), (width, height), settings, textData.text)
-        | CouldNotComputeSize -> raise(new Exception("Could not compute size"))
-    | SizedInputField(size, data, inputData) ->
-        match size with 
-        | Size(x,y) -> raise(new Exception(String.Format("Got A Size {0},{1}", x, y)))
-        | CouldNotComputeSize -> raise(new Exception("Could not compute size"))
-
+            let pos = alignmentToPosition(data.anchor, (width, height), parentSize)
+            Render.Text(pos, (width, height), lineHeight.Value, settings, textData.text)
+        | InputField(data, inputData) -> 
+            raise(new Exception("Input Field Not Implemented"))
+    | CouldNotComputeSize ->
+        raise(new Exception("Could not compute size"))
 
 let toRenderTree(widget: Widget, parentWidth: float32, parentHeight: float32): Render.Node = 
-    toSizeTree(widget, Size(parentWidth, parentHeight)) |> sizedToRenderNode
+    let sizeTree = toSizeTree(widget, Size(parentWidth, parentHeight))
+    sizedToRenderNode(sizeTree, (parentWidth, parentHeight))
 
 let anchorCenter = (VCenter, HCenter)
 let noOffset = (Zero, Zero)
@@ -182,5 +198,5 @@ let panel(children: Widget array): Widget =
 let text(value: string): Widget = 
     Text(defaultWidgetData, {
         text=value;
-        fontSettings={ fontSize=16; fontFamily="Consolas"; color=SKColor.Parse("#000000");}
+        fontSettings={ fontSize=48.0f; fontFamily="Consolas"; color=SKColor.Parse("#000000");}
     })

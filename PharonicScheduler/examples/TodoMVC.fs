@@ -12,4 +12,4 @@ type Model = {
 }
 
 let render(model: Model): Components.Widget = 
-    panel([| text("Todo MVC") |])
+    panel([| text("Magic Saucey") |])

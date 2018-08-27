@@ -11,23 +11,23 @@ type SkiaForm() as form =
     inherit Form()
 
     let skiaView = new SkiaSharp.Views.Desktop.SKControl()
-    let root: Render.Node = Render.Panel((0.0f,0.0f), (100.0f,100.0f),
-        [|
-            Render.Shape((75.0f, 75.0f), Render.fillBlackNoBorder, Render.Rectangle((1.0f,1.0f)));
-            Render.Shape((10.0f, 10.0f), Render.fillBlackNoBorder, Render.Rectangle((20.f, 20.f)));
-            Render.Shape((30.0f, 30.0f), Render.fillBlackNoBorder, Render.Rectangle((30.f, 30.f)));
-        |])
-
+    let model: TodoMVC.Model = { todos=[||] }
         
     let renderDebugText(canvas: SKCanvas) = 
         let skPaint = new SKPaint()
         skPaint.IsAntialias <- true
         skPaint.HintingLevel <- SKPaintHinting.Full
         skPaint.Color <- SKColors.Black
+        skPaint.TextSize <- 72.0f;
+        skPaint.IsLinearText <- true
+        skPaint.TextScaleX <- 1.0f;
+        skPaint.TextSkewX <- 0.0f;
+        skPaint.StrokeWidth <- 0.0f;
+        skPaint.Typeface <- SKFontManager.Default.MatchCharacter("Times New Roman", SKFontStyleWeight.Normal, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright, null, ' ');
+        let metrics = new SKFontMetrics()
         canvas.DrawText("SkiaSharp", new SKPoint(100.f,100.f), skPaint)
 
     do form.InitializeForm()
-
 
     member this.InitializeForm () =
         skiaView.Dock <- DockStyle.Fill
@@ -45,7 +45,8 @@ type SkiaForm() as form =
     member this.PaintSurface (args: SKPaintSurfaceEventArgs): unit = 
         let canvas = args.Surface.Canvas
         canvas.Clear(SKColors.White)
-        renderDebugText(canvas)
+        // renderDebugText(canvas)
+        let root: Render.Node = Components.toRenderTree(TodoMVC.render(model), float32(args.Info.Width), float32(args.Info.Height))
         Render.paint(canvas, root)
 
 

@@ -1,9 +1,8 @@
 ﻿module Render
 
 open SkiaSharp
-
-type Point = float32 * float32
-type Size = float32 * float32
+open System
+open CommonData
 
 type ColorAndWidth = SKColor * float32
 
@@ -29,13 +28,13 @@ type Geometry =
 type TextSettings = {
     fontSize: int;
     fontFamily: string;
-    color: string;
+    color: SKColor;
 }    
 
 type Node = 
     | Panel of Point * Size * Node array
-    | Shape of Point * PaintSettings * Geometry
-    | Text of Point * TextSettings * string
+    | Shape of Point * Size * PaintSettings * Geometry
+    | Text of Point * Size * TextSettings * string
 
 let toSkPoint((x,y): Point) = 
     new SKPoint(x,y)
@@ -63,10 +62,18 @@ let rec paint (canvas: SKCanvas, widget: Node) =
     match widget with
     | Panel((x,y), (width,height), children) ->
         canvas.Translate(x,y)
-        canvas.ClipRect(SKRect.Create(width,height))
+        //canvas.ClipRect(SKRect.Create(width,height))
         for child in children do
             paint(canvas, child)
-    | Shape((x,y), paintSettings, geometry) ->
+    | Text((x,y), (width, height), textSettings, text) ->
+        canvas.Translate(x,y)
+        //canvas.ClipRect(SKRect.Create(width,height))
+        let skPaint = new SKPaint()
+        skPaint.Color <- textSettings.color
+        skPaint.IsAntialias <- true
+        skPaint.TextSize <- float32(textSettings.fontSize)
+        canvas.DrawText(text, new SKPoint(0.f,0.f), skPaint)
+    | Shape((x,y), (width, height), paintSettings, geometry) ->
         canvas.Translate(x,y)
         fillShape(canvas, paintSettings, geometry)
         drawBorders(canvas, paintSettings, geometry)
